@@ -1,127 +1,189 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# # <center>Interactive Data Visualization in Python With Bokeh</center>
-
-# ## Adding Interaction
-
-# In[1]:
-
-
 import pandas as pd
 from bokeh.io import curdoc
 from bokeh.plotting import figure
 from bokeh.models import HoverTool, ColumnDataSource
-from bokeh.models import CategoricalColorMapper
-from bokeh.palettes import Spectral6
-from bokeh.layouts import widgetbox, row, gridplot
-from bokeh.models import Slider, Select
+from bokeh.layouts import widgetbox, row
+from bokeh.models import Select
+from bokeh.models import DateRangeSlider
+import datetime as dt
+from bokeh.models.widgets import Tabs, Panel
 
 
-# In[2]:
+dataset = pd.read_csv("data/dataset.csv")
+
+index = dataset[dataset["Location Level"] == "Country"].index
+dataset.drop(index,axis=0,inplace=True)
+
+df = dataset.iloc[:,:12]
+coloumn = ["Location ISO Code","New Deaths","New Cases","Total Deaths","Location Level"]
+df.drop(coloumn,axis=1,inplace=True)
+
+coloumn = {
+    "New Recovered":"New_Recovered",
+    "New Active Cases":"New_Active_Cases",
+    "Total Cases":"Total_Cases",
+    "Total Recovered":"Total_Recovered",
+    "Total Active Cases":"Total_Active_Cases"
+}
+
+df.rename(coloumn,axis=1,inplace=True)
+
+df["Date"] = pd.to_datetime(df["Date"]).dt.date
+df["Location_STR"] = df["Location"]
+#print(df.head(5))
+x_location = df['Location'].value_counts().sort_index().index.tolist()
 
 
-data = pd.read_csv("./data/gapminder_tidy.csv")
-data.set_index('Year', inplace=True)
 
-
-# In[3]:
-
-
-# Make a list of the unique values from the region column: regions_list
-regions_list = data.region.unique().tolist()
-
-# Make a color mapper: color_mapper
-color_mapper = CategoricalColorMapper(factors=regions_list, palette=Spectral6)
-
-
-# In[4]:
-
-
-# Make the ColumnDataSource: source
-source = ColumnDataSource(data={
-    'x'       : data.loc[1970].fertility,
-    'y'       : data.loc[1970].life,
-    'country' : data.loc[1970].Country,
-    'pop'     : (data.loc[1970].population / 20000000) + 2,
-    'region'  : data.loc[1970].region,
+source = ColumnDataSource(data={ #total covid cases
+    'Date'  : df[df['Location'] == 'DKI Jakarta']['Date'],
+    'Total_Cases' : df[df['Location'] == 'DKI Jakarta']['Total_Cases']
 })
 
+source_group = ColumnDataSource(data={
+    'Date'  : df[df['Location'] == 'DKI Jakarta']['Date'],
+    'Total_Active_Cases' : df[df['Location'] == 'DKI Jakarta']['Total_Active_Cases']
+}) 
 
-# In[ ]:
+source_group_2 = ColumnDataSource(data={
+    'Date'  : df[df['Location'] == 'DKI Jakarta']['Date'],
+    'Total_Active_Cases' : df[df['Location'] == 'DKI Jakarta']['Total_Active_Cases'],
+    'New_Active_Cases' : df[df['Location'] == 'DKI Jakarta']['New_Active_Cases']
+})
 
+tooltip_data = [
+        ('Date', '@Date{%F}'),
+        ('Total Cases', '@Total_Cases')
+]
 
-# Create the figure: plot
-plot = figure(title='1970', x_axis_label='Fertility (children per woman)', y_axis_label='Life Expectancy (years)',
-           plot_height=400, plot_width=700, tools=[HoverTool(tooltips='@country')])
+tooltip_group = [
+        ('Date', '@Date{%F}'),
+        ('Total Active Cases', '@Total_Active_Cases')
+]
 
-# Add a circle glyph to the figure p
-plot.circle(x='x', y='y', source=source, fill_alpha=0.8,
-           color=dict(field='region', transform=color_mapper), legend='region')
+tooltip_group_2 = [
+        ('Date', '@Date{%F}'),
+        ('Total Active Cases', '@Total_Active_Cases'),
+        ('New Active Cases', '@New_Active_Cases')
+]
 
-# Set the legend and axis attributes
-plot.legend.location = 'bottom_left'
+#print(source)
+fig_data = figure(x_axis_type='datetime',
+        plot_height=500, plot_width=750,
+        title='Province Total Covid Cases',
+        x_axis_label='Date', y_axis_label='Total Cases')
 
-# Define the callback function: update_plot
-def update_plot(attr, old, new):
-    # set the `yr` name to `slider.value` and `source.data = new_data`
-    yr = slider.value
-    x = x_select.value
-    y = y_select.value
-    # Label axes of plot
-    plot.xaxis.axis_label = x
-    plot.yaxis.axis_label = y
-    # new data
+fig_data2 = figure(x_axis_type='datetime',
+        plot_height=500, plot_width=750,
+        title='Province Total Active Cases',
+        x_axis_label='Date', y_axis_label='Total Active Cases')
+
+fig_data3 = figure(x_axis_type='datetime',
+        plot_height=500, plot_width=750,
+        title='Province New Active Cases',
+        x_axis_label='Date', y_axis_label='New Active Cases')
+
+fig_data.add_tools(HoverTool(tooltips = tooltip_data, formatters={'@Date':'datetime'}))
+fig_data2.add_tools(HoverTool(tooltips = tooltip_group, formatters={'@Date':'datetime'}))
+fig_data3.add_tools(HoverTool(tooltips = tooltip_group_2, formatters={'@Date':'datetime'}))
+
+fig_data.line('Date', 'Total_Cases',  
+                color='#CE1141',
+                source=source)
+
+fig_data2.line('Date', 'Total_Active_Cases',  
+                color='#CE1141',
+                source=source_group)
+
+fig_data3.line('Date', 'New_Active_Cases',  
+                color='#CE1141',
+                source=source_group_2)
+
+def update_data(attr,old,new):
+    [start, end] = slider.value
+    date_from = dt.datetime.fromtimestamp(start/1000.0).date()
+    date_until = dt.datetime.fromtimestamp(end/1000.0).date()
+
+    data_location = str(location_select.value)
+
+    #new data
+    loc_date = df[(df['Date'] >= date_from) & (df['Date'] <= date_until)]
     new_data = {
-    'x'       : data.loc[yr][x],
-    'y'       : data.loc[yr][y],
-    'country' : data.loc[yr].Country,
-    'pop'     : (data.loc[yr].population / 20000000) + 2,
-    'region'  : data.loc[yr].region,
+        'Date' : loc_date[loc_date['Location'] == data_location]['Date'],
+        'Total_Cases' : loc_date[loc_date['Location'] == data_location]['Total_Cases'],
     }
     source.data = new_data
-    
-    # Add title to figure: plot.title.text
-    plot.title.text = 'Gapminder data for %d' % yr
 
-# Make a slider object: slider
-slider = Slider(start=1970, end=2010, step=1, value=1970, title='Year')
-slider.on_change('value',update_plot)
+def update_data2(attr,old,new):
+    [start, end] = slider2.value
+    date_from = dt.datetime.fromtimestamp(start/1000.0).date()
+    date_until = dt.datetime.fromtimestamp(end/1000.0).date()
 
-# Make dropdown menu for x and y axis
-# Create a dropdown Select widget for the x data: x_select
-x_select = Select(
-    options=['fertility', 'life', 'child_mortality', 'gdp'],
-    value='fertility',
-    title='x-axis data'
+    data_location = str(location_select2.value)
+
+    #new data
+    loc_date = df[(df['Date'] >= date_from) & (df['Date'] <= date_until)]
+    new_data = {
+        'Date' : loc_date[loc_date['Location'] == data_location]['Date'],
+        'Total_Active_Cases' : loc_date[loc_date['Location'] == data_location]['Total_Active_Cases']
+    }
+    source_group.data = new_data
+
+def update_data3(attr,old,new):
+    [start, end] = slider3.value
+    date_from = dt.datetime.fromtimestamp(start/1000.0).date()
+    date_until = dt.datetime.fromtimestamp(end/1000.0).date()
+
+    data_location = str(location_select3.value)
+
+    #new data
+    loc_date = df[(df['Date'] >= date_from) & (df['Date'] <= date_until)]
+    new_data = {
+        'Date' : loc_date[loc_date['Location'] == data_location]['Date'],
+        'Total_Active_Cases' : loc_date[loc_date['Location'] == data_location]['Total_Active_Cases'],
+        'New_Active_Cases' : loc_date[loc_date['Location'] == data_location]['New_Active_Cases']
+    }
+    source_group_2.data = new_data
+
+location_select = Select(
+    options=[str(x) for x in x_location],
+    value = 'DKI Jakarta',
+    title = 'Location'
 )
-# Attach the update_plot callback to the 'value' property of x_select
-x_select.on_change('value', update_plot)
 
-# Create a dropdown Select widget for the y data: y_select
-y_select = Select(
-    options=['fertility', 'life', 'child_mortality', 'gdp'],
-    value='life',
-    title='y-axis data'
+location_select2 = Select(
+    options=[str(x) for x in x_location],
+    value = 'DKI Jakarta',
+    title = 'Location'
 )
-# Attach the update_plot callback to the 'value' property of y_select
-y_select.on_change('value', update_plot)
-    
-# Create layout and add to current document
-layout = row(widgetbox(slider, x_select, y_select), plot)
-curdoc().add_root(layout)
 
+location_select3 = Select(
+    options=[str(x) for x in x_location],
+    value = 'DKI Jakarta',
+    title = 'Location'
+)
 
-# In[5]:
+location_select.on_change('value',update_data)
+location_select2.on_change('value',update_data2)
+location_select3.on_change('value',update_data3)
 
+init_value = (df['Date'].min(), df['Date'].max())
 
-# bokeh serve --show myapp.py
+slider = DateRangeSlider(start = init_value[0], end = init_value[1], value=init_value)
+slider2 = DateRangeSlider(start = init_value[0], end = init_value[1], value=init_value)
+slider3 = DateRangeSlider(start = init_value[0], end = init_value[1], value=init_value)
 
+slider.on_change('value' ,update_data) 
+slider2.on_change('value' ,update_data2) 
+slider3.on_change('value' ,update_data3)
 
-# For more on all things interaction in Bokeh, [**Adding Interactions**](https://docs.bokeh.org/en/latest/docs/user_guide/interaction.html) in the Bokeh User Guide is a great place to start.
+layout = row(widgetbox(location_select, slider), fig_data)
+layout2 = row(widgetbox(location_select2,slider2), fig_data2)
+layout3 = row(widgetbox(location_select3,slider3), fig_data3)
 
-# In[ ]:
+panel = Panel(child=layout, title='Province Total Covid Cases')
+panel_2 = Panel(child=layout2, title= 'Province Total Active Cases')
+panel_3 = Panel(child=layout3, title= 'Province New Active Cases')
+tabs = Tabs(tabs=[panel,panel_2,panel_3])  
 
-
-
-
+curdoc().add_root(tabs)
